@@ -1,339 +1,253 @@
-# 🌾 Sugarcane Disease & Insect Detection
+# 🌾 Sugarcane Disease & Insect Detection System
 
-An AI-powered web application for early detection and classification of diseases and insect pests in sugarcane crops using YOLOv8 deep learning models.
+An AI-powered web application for early detection and classification of diseases and insect pests in sugarcane crops, built with **FastAPI**, **YOLOv8**, and a full user authentication system.
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-009688)
 ![YOLOv8](https://img.shields.io/badge/YOLOv8-Ultralytics-green)
-![Flask](https://img.shields.io/badge/Flask-3.0%2B-black)
+![SQLite](https://img.shields.io/badge/Database-SQLite-lightgrey)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
+
+---
 
 ## 📋 Overview
 
-This project provides a complete solution for detecting and analyzing sugarcane diseases and insect damage using state-of-the-art computer vision. It includes:
+This project provides a production-ready solution for detecting and analyzing sugarcane diseases and insect damage using state-of-the-art computer vision. It includes a secure user authentication system, scan history tracking, PDF report generation, and real-time webcam analysis.
 
-- **Dual AI Models**: Object detection and instance segmentation
-- **Professional Web Interface**: Modern, responsive UI built with Flask
-- **Real-time Analysis**: Instant detection with detailed reports
-- **Actionable Insights**: Treatment recommendations for detected issues
+---
 
 ## ✨ Features
 
-### 🤖 AI Models
-- **YOLOv8 Object Detection**: Fast bounding box detection (~30-50 FPS)
-- **YOLOv8 Instance Segmentation**: Precise pixel-level masks (~20-30 FPS)
-- **Multi-class Detection**: Healthy, Disease, and Insect categories
+### 🤖 AI Detection
+- **YOLOv8 Object Detection** — Fast bounding box detection
+- **YOLOv8 Instance Segmentation** — Precise pixel-level masks
+- **Spatial Heatmap Generation** — Confidence-weighted activation overlay
+- **Live Webcam Analysis** — Real-time frame-by-frame detection
+- **Batch Image Processing** — Analyze multiple images in one request
+
+### 🔐 Authentication & User System
+- User registration & login with **JWT tokens** (24-hour expiry)
+- Passwords hashed with **pbkdf2_sha256** via Passlib
+- Protected API endpoints with `Bearer` token authorization
+- Per-user **scan history** stored in SQLite via SQLAlchemy
+
+### 📊 Analysis & Reporting
+- **Health Index** calculation based on area affected and severity
+- **Chemical treatment recommendations** gated behind ≥75% confidence threshold
+- Downloadable **PDF reports** per scan (via ReportLab)
+- Aggregated **dashboard statistics**: total scans, diseases, insects, healthy rate
 
 ### 🌐 Web Interface
 - Drag-and-drop image upload
-- Adjustable confidence threshold
-- Side-by-side model comparison
-- Detailed analysis reports
-- Treatment recommendations
-- Mobile-responsive design
+- Adjustable confidence threshold (0.1–0.9)
+- Side-by-side annotated result + heatmap view
+- Scan history gallery
+- Responsive, mobile-friendly design
+- About & contact page
 
-### 📊 Analysis Features
-- Detection count and confidence scores
-- Severity assessment
-- Color-coded visualizations
-- Comprehensive recommendations
-- Export-ready reports
+---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.8 or higher
+- Python 3.8+
 - CUDA-capable GPU (recommended)
-- 4GB+ RAM
+- 4 GB+ RAM
 
 ### Installation
 
 1. **Clone the repository**
-```bash
-git clone <your-repo-url>
-cd Sugarcane-Disease-Insect-Detection
-```
+   ```bash
+   git clone https://github.com/babuvinayn/sugarcane-disease-detection-system.git
+   cd sugarcane-disease-detection-system
+   ```
 
 2. **Install dependencies**
-```bash
-pip install -r requirements.txt
-```
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-3. **Run the web application**
-```bash
-cd interface
-python app.py
-```
+3. **Configure environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env and set your SECRET_KEY and any other values
+   ```
 
-4. **Open in browser**
-```
-http://localhost:5000
-```
+4. **Run the server**
+   ```bash
+   uvicorn interface.app:app --host 0.0.0.0 --port 8000 --reload
+   ```
+
+5. **Open in browser**
+   ```
+   http://localhost:8000
+   ```
+
+---
 
 ## 📁 Project Structure
 
 ```
-Sugarcane-Disease-Insect-Detection/
-├── interface/                  # Web application
-│   ├── app.py                 # Flask backend
-│   ├── templates/             # HTML templates
-│   ├── static/                # CSS, JavaScript
-│   ├── uploads/               # Temporary uploads
-│   ├── results/               # Temporary results
-│   ├── run.bat                # Windows launcher
-│   └── README.md              # Interface docs
-├── models/                     # Trained AI models
-│   ├── yolov8.pt              # Detection model (22.5 MB)
-│   └── yolov8_seg.pt          # Segmentation model (71.2 MB)
-├── inference/                  # Command-line inference
-│   ├── predict.py             # Inference script
-│   ├── input/                 # Input images
-│   └── output/                # Results
-├── training/                   # Model training
-│   ├── train_seg.py           # Training script
-│   ├── setup_dataset.py       # Dataset setup
-│   └── README.md              # Training guide
+sugarcane-disease-detection-system/
+├── interface/                  # Web application (FastAPI)
+│   ├── app.py                 # Main FastAPI app & all API routes
+│   ├── auth.py                # JWT authentication logic
+│   ├── database.py            # SQLAlchemy models (User, ScanHistory)
+│   ├── disease_recommendations.json  # Treatment knowledge base
+│   ├── templates/             # Jinja2 HTML templates
+│   │   ├── index.html         # Main detection UI
+│   │   ├── login.html         # Login page
+│   │   ├── signup.html        # Registration page
+│   │   ├── dashboard.html     # User dashboard
+│   │   └── about.html         # About page
+│   ├── static/                # CSS, JavaScript, assets
+│   └── uploads/               # Temporary upload directory
+├── models/                     # Trained YOLOv8 model files
+│   ├── yolov8.pt              # Detection model
+│   └── yolov8_seg.pt          # Segmentation model
+├── inference/                  # CLI inference scripts
+│   └── predict.py
+├── training/                   # Model training scripts
+│   ├── train_seg.py
+│   └── setup_dataset.py
 ├── data/                       # Dataset configuration
-│   └── dataset.yaml           # YOLO config
-├── requirements.txt            # Python dependencies
-└── README.md                   # This file
+│   └── dataset.yaml
+├── .env.example               # Environment variable template
+├── requirements.txt           # Python dependencies
+└── Dockerfile                 # Container deployment config
 ```
 
-## 💻 Usage
+---
 
-### Web Interface (Recommended)
+## 🌐 API Reference
 
-1. **Start the server**
-   ```bash
-   cd interface
-   python app.py
-   ```
+All protected endpoints require the `Authorization: Bearer <token>` header.
 
-2. **Upload an image**
-   - Click the upload area or drag & drop
-   - Supports: PNG, JPG, JPEG, BMP, TIFF (max 16MB)
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/signup` | ❌ | Register a new user |
+| `POST` | `/api/login` | ❌ | Login and get JWT token |
+| `GET` | `/logout` | ❌ | Redirect to login (clears client token) |
+| `POST` | `/api/analyze` | ✅ | Single image analysis |
+| `POST` | `/api/analyze/batch` | ❌ | Batch image analysis |
+| `POST` | `/api/live-analyze` | ❌ | Lightweight webcam frame analysis |
+| `GET` | `/api/history` | ✅ | Get user's scan history |
+| `GET` | `/api/stats` | ✅ | Get aggregated dashboard statistics |
+| `GET` | `/api/report/{scan_id}` | ✅ | Download PDF report for a scan |
+| `GET` | `/api/health` | ❌ | Server & model health check |
 
-3. **Configure analysis**
-   - Choose model type (Detection or Segmentation)
-   - Adjust confidence threshold (0.1 - 0.9)
-
-4. **Analyze**
-   - Click "Analyze Image"
-   - View annotated results and detailed report
-
-### Command-Line Inference
-
-For batch processing:
+### Example: Analyze an Image
 ```bash
-cd inference
-python predict.py
-```
-
-Edit `predict.py` to configure paths and parameters.
-
-## 🎯 Model Information
-
-### Detection Model (`yolov8.pt`)
-- **Type**: YOLOv8n Object Detection
-- **Size**: 22.5 MB
-- **Speed**: ~30-50 FPS (GPU)
-- **Output**: Bounding boxes
-- **Use Case**: Quick screening, real-time monitoring
-
-### Segmentation Model (`yolov8_seg.pt`)
-- **Type**: YOLOv8n Instance Segmentation
-- **Size**: 71.2 MB
-- **Speed**: ~20-30 FPS (GPU)
-- **Output**: Pixel-level masks
-- **Use Case**: Detailed analysis, area calculation
-
-### Classes
-1. **Healthy** 🟢 - Normal, healthy sugarcane tissue
-2. **Disease** 🔴 - Disease-affected areas (fungal, bacterial, viral)
-3. **Insect** 🟠 - Insect pest damage or presence
-
-## 📊 Performance
-
-### Accuracy (Validation Set)
-- **mAP50**: ~0.85-0.90
-- **mAP50-95**: ~0.70-0.80
-
-### Inference Speed (NVIDIA RTX 3060)
-- **Detection**: 20-30ms per image
-- **Segmentation**: 40-60ms per image
-
-*Results may vary based on hardware and image resolution*
-
-## 🎓 Training Your Own Models
-
-See detailed training guide: [`training/README.md`](training/README.md)
-
-**Quick steps:**
-1. Prepare your dataset in YOLO format
-2. Run `python training/setup_dataset.py`
-3. Place images and labels in `data/` folders
-4. Configure `training/train_seg.py`
-5. Run `python training/train_seg.py`
-
-## 🔧 Configuration
-
-### Update Class Names
-Edit `interface/app.py` (lines 37-57):
-```python
-CLASS_INFO = {
-    "healthy": {...},
-    "disease": {...},
-    "insect": {...}
-}
-```
-
-### Change Model Paths
-Edit `interface/app.py` (lines 29-30):
-```python
-DETECTION_MODEL_PATH = MODEL_DIR / "yolov8.pt"
-SEGMENTATION_MODEL_PATH = MODEL_DIR / "yolov8_seg.pt"
-```
-
-### Adjust Server Settings
-Edit `interface/app.py` (line 229):
-```python
-app.run(debug=True, host='0.0.0.0', port=5000)
-```
-
-## 🌐 API Documentation
-
-### POST `/api/analyze`
-Analyze an uploaded image
-
-**Request:**
-```bash
-curl -X POST http://localhost:5000/api/analyze \
+curl -X POST http://localhost:8000/api/analyze \
+  -H "Authorization: Bearer <your_token>" \
   -F "file=@image.jpg" \
   -F "model_type=detection" \
   -F "conf_threshold=0.25"
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "image": "data:image/png;base64,...",
-  "analysis": {
-    "total_detections": 3,
-    "status": "warning",
-    "detections": [...],
-    "recommendations": [...]
-  }
-}
+### Example: Get Auth Token
+```bash
+curl -X POST http://localhost:8000/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "yourpassword"}'
 ```
 
-### GET `/api/health`
-Check server health
-```bash
-curl http://localhost:5000/api/health
+---
+
+## 🎯 Model Information
+
+| Model | Type | Size | Output | Best For |
+|-------|------|------|--------|----------|
+| `yolov8.pt` | YOLOv8n Detection | 22.5 MB | Bounding boxes | Quick screening |
+| `yolov8_seg.pt` | YOLOv8n Segmentation | 67.9 MB | Pixel masks | Detailed area analysis |
+
+### Detection Classes
+| Class | Description |
+|-------|-------------|
+| 🟢 **Healthy** | Normal, healthy sugarcane tissue |
+| 🔴 **Disease** | Disease-affected areas (fungal, bacterial, viral) |
+| 🟠 **Insect** | Insect pest damage or presence |
+
+---
+
+## ⚙️ Configuration (`.env`)
+
+```env
+SECRET_KEY=your-secret-key-here
+APP_HOST=0.0.0.0
+APP_PORT=8000
+LOG_LEVEL=INFO
+LOG_FILE=logs/app.log
+MAX_FILE_SIZE_MB=16
+CORS_ORIGINS=*
+DETECTION_MODEL_PATH=models/yolov8.pt
+SEGMENTATION_MODEL_PATH=models/yolov8_seg.pt
 ```
+
+---
+
+## 🐳 Docker Deployment
+
+```bash
+docker build -t sugarcane-detection .
+docker run -p 8000:8000 sugarcane-detection
+```
+
+---
 
 ## 🛠️ Troubleshooting
 
-### Common Issues
-
 **Models not loading**
-- Verify model files exist in `models/` directory
-- Check file paths in `app.py`
-- Ensure models are valid YOLOv8 `.pt` files
-
-**CUDA out of memory**
-- Use detection model instead of segmentation
-- Reduce image resolution
-- Close other GPU applications
+- Verify `.pt` files exist in the `models/` directory
+- Check `DETECTION_MODEL_PATH` / `SEGMENTATION_MODEL_PATH` in `.env`
 
 **Port already in use**
-```python
-# Change port in app.py
-app.run(port=5001)
+```bash
+uvicorn interface.app:app --port 8001
 ```
 
-**Slow inference**
-- Enable GPU acceleration
-- Use smaller images
-- Use detection model for speed
+**Authentication errors (401)**
+- Ensure you're sending `Authorization: Bearer <token>` header
+- Tokens expire after 24 hours — log in again
 
-## 🚀 Deployment
+**Large file warning (yolov8_seg.pt)**
+- The segmentation model is ~68 MB. GitHub warns but still hosts it.
+- Consider [Git LFS](https://git-lfs.github.com) for future model updates.
 
-### Local Network
-```python
-# In app.py
-app.run(host='0.0.0.0', port=5000)
-# Access: http://YOUR_IP:5000
-```
+---
 
-### Production Deployment
-- **Docker**: Containerize the application
-- **Heroku**: Add `Procfile` and `runtime.txt`
-- **AWS EC2**: Use Gunicorn + Nginx
-- **Google Cloud Run**: Deploy with Docker
-- **Azure**: Use Azure App Service
+## 📚 Tech Stack
 
-**Security checklist for production:**
-- [ ] Add authentication
-- [ ] Implement rate limiting
-- [ ] Use HTTPS
-- [ ] Validate file uploads
-- [ ] Set up CORS
-- [ ] Use environment variables
-- [ ] Enable logging
+| Layer | Technology |
+|-------|-----------|
+| AI/ML | PyTorch, Ultralytics YOLOv8 |
+| Backend | FastAPI, Uvicorn, Pydantic |
+| Auth | python-jose (JWT), Passlib (pbkdf2_sha256) |
+| Database | SQLite, SQLAlchemy |
+| Computer Vision | OpenCV, Pillow, NumPy |
+| PDF Reports | ReportLab |
+| Frontend | HTML5, CSS3, JavaScript, Jinja2 |
 
-## 📚 Technologies Used
-
-- **Deep Learning**: PyTorch, Ultralytics YOLOv8
-- **Computer Vision**: OpenCV, Pillow
-- **Web Framework**: Flask
-- **Frontend**: HTML5, CSS3, JavaScript
-- **Data Processing**: NumPy
+---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please:
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+2. Create a feature branch (`git checkout -b feature/YourFeature`)
+3. Commit your changes
+4. Push and open a Pull Request
 
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 👥 Authors
-
-Developed by [Nith2005](https://github.com/Nith2005)
-
-## 🙏 Acknowledgments
-
-- [Ultralytics YOLOv8](https://github.com/ultralytics/ultralytics) - Object detection framework
-- [Flask](https://flask.palletsprojects.com/) - Web framework
-- [PyTorch](https://pytorch.org/) - Deep learning platform
-
-## 📞 Contact
-
-For questions, issues, or collaboration:
-- **GitHub Issues**: [https://github.com/Nith2005/Sugarcane-Disease-Detection/issues](https://github.com/Nith2005/Sugarcane-Disease-Detection/issues)
-- **Pull Requests**: Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md)
-- **Documentation**: See README files in each directory
-
-## 📈 Roadmap
-
-- [ ] Add more disease classes
-- [ ] Implement batch processing
-- [ ] Add data augmentation options
-- [ ] Create mobile app
-- [ ] Add multi-language support
-- [ ] Integrate with IoT sensors
-- [ ] Add historical tracking
-- [ ] Export to PDF reports
+---
 
 ## ⚠️ Disclaimer
 
-This is an AI-assisted agricultural tool designed to help with early detection. For critical decisions regarding crop management and treatment, always consult with qualified agricultural experts and agronomists.
+This is an AI-assisted agricultural tool designed to aid early detection. **Always verify results with a qualified agronomist** before applying chemical treatments. Chemical recommendations are only shown when model confidence is ≥ 75%.
+
+---
+
+## 👥 Author
+
+Developed by [BabuVinay N](https://github.com/babuvinayn)
 
 ---
 
