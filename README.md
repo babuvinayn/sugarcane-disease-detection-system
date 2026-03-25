@@ -247,7 +247,7 @@ This is an AI-assisted agricultural tool designed to aid early detection. **Alwa
 
 ## 👥 Author
 
-Developed by [BabuVinay N](https://github.com/babuvinayn)
+Developed by [BabuVinay N](https://github.com/babuvinayn), Ram Chaithanya & Hithesh Reddy P
 
 ---
 
