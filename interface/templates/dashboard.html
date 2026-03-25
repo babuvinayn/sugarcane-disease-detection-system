@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Sugarcane Health</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #22c55e;
+            --primary-dark: #16a34a;
+            --bg-dark: #050505;
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --border: rgba(255, 255, 255, 0.1);
+            --text-main: #f8fafc;
+            --text-dim: #94a3b8;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            background-image: radial-gradient(circle at 20% 20%, #1a2e1a 0%, transparent 40%),
+                              radial-gradient(circle at 80% 80%, #0c1a0c 0%, transparent 40%);
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+        }
+
+        .dashboard-layout {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            background: rgba(255, 255, 255, 0.02);
+            backdrop-filter: blur(10px);
+            border-right: 1px solid var(--border);
+            padding: 32px 24px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 48px;
+            color: var(--primary);
+        }
+
+        .nav-links {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            flex-grow: 1;
+        }
+
+        .nav-item {
+            margin-bottom: 8px;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 18px;
+            border-radius: 12px;
+            color: var(--text-dim);
+            text-decoration: none;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            background: rgba(34, 197, 94, 0.1);
+            color: var(--primary);
+        }
+
+        .logout-btn {
+            margin-top: auto;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 18px;
+            color: #ef4444;
+            text-decoration: none;
+            font-weight: 600;
+            transition: opacity 0.3s;
+        }
+
+        .logout-btn:hover {
+            opacity: 0.8;
+        }
+
+        /* Main Content Styles */
+        .main-content {
+            padding: 40px;
+            overflow-y: auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+        }
+
+        .welcome-text h1 {
+            font-size: 2rem;
+            margin: 0;
+        }
+
+        .welcome-text p {
+            color: var(--text-dim);
+            margin: 4px 0 0 0;
+        }
+
+        .action-btn {
+            background: var(--primary);
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(34, 197, 94, 0.3);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 24px;
+            transition: transform 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(34, 197, 94, 0.3);
+        }
+
+        .stat-header {
+            display: flex;
+            justify-content: space-between;
+            color: var(--text-dim);
+            font-size: 0.9rem;
+            margin-bottom: 12px;
+        }
+
+        .stat-value {
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .stat-trend {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.85rem;
+        }
+
+        .trend-up { color: #22c55e; }
+        .trend-down { color: #ef4444; }
+
+        /* Charts Grid */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .chart-container {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 30px;
+        }
+
+        .chart-header {
+            margin-bottom: 24px;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        /* Recent Table */
+        .recent-activity {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 30px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th {
+            text-align: left;
+            padding: 12px 16px;
+            color: var(--text-dim);
+            font-weight: 500;
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .status-healthy { background: rgba(34, 197, 94, 0.1); color: #4ade80; }
+        .status-warning { background: rgba(245, 158, 11, 0.1); color: #fbbf24; }
+        .status-critical { background: rgba(239, 68, 68, 0.1); color: #f87171; }
+
+        @media (max-width: 1024px) {
+            .dashboard-layout { grid-template-columns: 1fr; }
+            .sidebar { display: none; }
+            .charts-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="page-transition">
+    <div class="dashboard-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="fas fa-leaf"></i>
+                <span>AgriGuard AI</span>
+            </div>
+            <ul class="nav-links">
+                <li class="nav-item">
+                    <a href="/dashboard" class="nav-link active">
+                        <i class="fas fa-th-large"></i> Overview
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/" class="nav-link">
+                        <i class="fas fa-search"></i> New Scan
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/history" class="nav-link">
+                        <i class="fas fa-history"></i> History
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/about" class="nav-link">
+                        <i class="fas fa-info-circle"></i> Support
+                    </a>
+                </li>
+            </ul>
+            <a href="#" class="logout-btn" id="logout-link">
+                <i class="fas fa-sign-out-alt"></i> Logout
+            </a>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="header">
+                <div class="welcome-text">
+                    <h1>Welcome back, <span id="user-display-name">User</span></h1>
+                    <p>Here's what's happening with your sugarcane fields.</p>
+                </div>
+                <a href="/" class="action-btn">
+                    <i class="fas fa-plus"></i> New Analysis
+                </a>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span>Total Scans</span>
+                        <i class="fas fa-eye"></i>
+                    </div>
+                    <div class="stat-value" id="stat-total">--</div>
+                    <div class="stat-trend trend-up">
+                        <i class="fas fa-arrow-up"></i> 12% increase
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span>Healthy Crops</span>
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="stat-value" id="stat-healthy">--%</div>
+                    <div class="stat-trend trend-up">
+                        <i class="fas fa-arrow-up"></i> 5% better
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span>Issues Tracked</span>
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div class="stat-value" id="stat-issues">--</div>
+                    <div class="stat-trend trend-down">
+                        <i class="fas fa-arrow-down"></i> 2% decrease
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts -->
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <div class="chart-header">Health Trend (Last 30 Days)</div>
+                    <canvas id="trendChart" height="250"></canvas>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-header">Problem Distribution</div>
+                    <canvas id="distChart" height="250"></canvas>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="recent-activity">
+                <div class="chart-header">Recent Scans</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date & Time</th>
+                            <th>Detection Class</th>
+                            <th>Confidence</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scans-table-body">
+                        <!-- Loaded dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+    <script src="/static/js/transitions.js"></script>
+
+    <script>
+        // Initialize Charts
+        function initCharts(stats) {
+            const ctxTrend = document.getElementById('trendChart').getContext('2d');
+            new Chart(ctxTrend, {
+                type: 'line',
+                data: {
+                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                    datasets: [{
+                        label: 'Average Health Index',
+                        data: [85, 88, 82, 90, 92, 95],
+                        borderColor: '#22c55e',
+                        tension: 0.4,
+                        fill: true,
+                        backgroundColor: 'rgba(34, 197, 94, 0.1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: false, grid: { color: 'rgba(255,255,255,0.05)' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+
+            const ctxDist = document.getElementById('distChart').getContext('2d');
+            new Chart(ctxDist, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Healthy', 'Red Rot', 'Leaf Spot', 'Yellow Leaf'],
+                    datasets: [{
+                        data: [65, 12, 15, 8],
+                        backgroundColor: ['#22c55e', '#ef4444', '#f59e0b', '#3b82f6'],
+                        borderWidth: 0,
+                        hoverOffset: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8' } } }
+                }
+            });
+        }
+
+        async function loadDashboardData() {
+            const token = localStorage.getItem('token');
+            const userStr = localStorage.getItem('user');
+
+            if (!token || !userStr) {
+                window.location.href = '/login';
+                return;
+            }
+
+            const user = JSON.parse(userStr);
+            document.getElementById('user-display-name').textContent = user.name || user.email;
+
+            try {
+                const headers = { 'Authorization': `Bearer ${token}` };
+                
+                // Fetch stats
+                const statsRes = await fetch('/api/stats', { headers });
+                const stats = await statsRes.json();
+                
+                if (statsRes.status === 401) {
+                     localStorage.removeItem('token');
+                     window.location.href = '/login';
+                     return;
+                }
+
+                document.getElementById('stat-total').textContent = stats.total_scans;
+                document.getElementById('stat-healthy').textContent = stats.healthy_rate + '%';
+                document.getElementById('stat-issues').textContent = stats.diseases_found + stats.insects_found;
+
+                // Fetch history
+                const historyRes = await fetch('/api/history?limit=5', { headers });
+                const history = await historyRes.json();
+                
+                const tableBody = document.getElementById('scans-table-body');
+                tableBody.innerHTML = '';
+                
+                if (!history.history || history.history.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 40px; color: var(--text-dim);">No scans found yet. Start your first analysis!</td></tr>';
+                } else {
+                    history.history.forEach(scan => {
+                        const date = new Date(scan.timestamp).toLocaleString();
+                        const statusClass = scan.disease === 'healthy' ? 'status-healthy' : (scan.confidence > 80 ? 'status-critical' : 'status-warning');
+                        const row = `
+                            <tr>
+                                <td>${date}</td>
+                                <td>${scan.disease.charAt(0).toUpperCase() + scan.disease.slice(1)}</td>
+                                <td>${scan.confidence}%</td>
+                                <td><span class="status-badge ${statusClass}">${scan.disease === 'healthy' ? 'Healthy' : 'Anomaly'}</span></td>
+                                <td><a href="/api/report/${scan.id}" style="color: var(--primary); text-decoration: none;" class="report-link"><i class="fas fa-file-pdf"></i> PDF</a></td>
+                            </tr>
+                        `;
+                        tableBody.innerHTML += row;
+                    });
+
+                    // Update PDF report links with token if needed (though PDF API is protected by cookie or we use same header approach)
+                    document.querySelectorAll('.report-link').forEach(link => {
+                        link.addEventListener('click', async (e) => {
+                            e.preventDefault();
+                            const res = await fetch(link.href, { headers });
+                            if (res.ok) {
+                                const blob = await res.blob();
+                                const url = window.URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `report_${link.href.split('/').pop()}.pdf`;
+                                document.body.appendChild(a);
+                                a.click();
+                                a.remove();
+                            }
+                        });
+                    });
+                }
+
+                initCharts(stats);
+
+            } catch (err) {
+                console.error('Failed to load dashboard data:', err);
+            }
+        }
+
+        document.getElementById('logout-link').addEventListener('click', (e) => {
+            e.preventDefault();
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/login';
+        });
+
+        loadDashboardData();
+    </script>
+</body>
+</html>

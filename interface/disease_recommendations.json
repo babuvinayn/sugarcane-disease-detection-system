@@ -1,0 +1,51 @@
+{
+    "healthy": {
+        "color": "#10b981",
+        "icon": "✓",
+        "description": "Healthy sugarcane tissue",
+        "severity": "low",
+        "treatment": [
+            "No chemical action needed."
+        ],
+        "prevention": [
+            "Continue regular monitoring.",
+            "Maintain current irrigation and fertilization practices.",
+            "Ensure proper field drainage."
+        ]
+    },
+    "disease": {
+        "color": "#ef4444",
+        "icon": "⚠",
+        "description": "Disease detected (Fungal/Bacterial)",
+        "severity": "high",
+        "treatment": [
+            "Apply Carbendazim 50% WP (2.0g/L) for general fungal control.",
+            "Spray Propiconazole 25% EC (1.0ml/L) if visible rust or spots persist.",
+            "Isolate or remove severely affected plants immediately.",
+            "Ensure proper soil drainage to reduce pathogen moisture."
+        ],
+        "prevention": [
+            "Ensure adequate spacing between plants for airflow.",
+            "Use disease-resistant sugarcane varieties in future plantings.",
+            "Avoid overhead irrigation which can spread pathogens."
+        ]
+    },
+    "insect": {
+        "color": "#f59e0b",
+        "icon": "⚡",
+        "description": "Insect pest detected",
+        "severity": "medium",
+        "treatment": [
+            "Spray Imidacloprid 17.8 SL (0.3ml/L) for sucking pests.",
+            "Apply Chlorantraniliprole 18.5% SC (0.4ml/L) if borer activity is suspected.",
+            "Consider biological pest control methods like Trichogramma parasites.",
+            "Targeted spray only on affected patches to preserve beneficial insects."
+        ],
+        "prevention": [
+            "Implement Integrated Pest Management (IPM) practices.",
+            "Monitor surrounding plants regularly for early signs of infestation.",
+            "Clear debris and weeds around the field where pests might breed."
+        ]
+    }
+}
+

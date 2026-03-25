@@ -1,0 +1,224 @@
+/* Custom CSS extensions for AI Dashboard styling */
+
+/* Hide default browser behaviors */
+input[type=file] {
+    display: none;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #0f172a;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+}
+
+/* Base tailwind directives assumed from CDN so pure CSS classes go here */
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(15px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-fade-in-up {
+    animation: fadeInUp 0.6s ease-out forwards;
+}
+
+.result-card-enter {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+/* Toast slide-in animation */
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.animate-slide-in-right {
+    animation: slideInRight 0.4s ease-out forwards;
+}
+
+/* Severity gauge glow */
+#severityArc {
+    filter: drop-shadow(0 0 6px currentColor);
+}
+
+/* Smooth range slider track */
+input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #22c55e;
+    cursor: pointer;
+    border: 2px solid #0f172a;
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+}
+
+input[type=range]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #22c55e;
+    cursor: pointer;
+    border: 2px solid #0f172a;
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+}
+
+/* Explicit AI Theme Colors (Fallback Override) */
+body,
+.bg-darkBg {
+    background-color: #0f172a !important;
+}
+
+.bg-cardBg {
+    background-color: #1e293b !important;
+}
+
+.text-primary {
+    color: #22c55e !important;
+}
+
+.bg-primary,
+.group-hover\:bg-primaryHover {
+    background-color: #22c55e !important;
+}
+
+.hover\:bg-primaryHover:hover,
+.hover\:bg-primaryHover:focus {
+    background-color: #16a34a !important;
+}
+
+.border-primary {
+    border-color: #22c55e !important;
+}
+
+.from-primary {
+    --tw-gradient-from: #22c55e !important;
+}
+
+/* ---------------------------------------------------- */
+/* Comparison Slider */
+/* ---------------------------------------------------- */
+.comparison-slider {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.comparison-slider img {
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    -moz-user-drag: none;
+    -o-user-drag: none;
+    user-select: none;
+}
+
+/* ---------------------------------------------------- */
+/* Light Mode Support */
+/* ---------------------------------------------------- */
+.light-mode {
+    background-color: #f8fafc !important;
+    color: #1e293b !important;
+}
+
+.light-mode .bg-darkBg {
+    background-color: #f8fafc !important;
+}
+
+.light-mode .bg-cardBg {
+    background-color: #ffffff !important;
+    border-color: #e2e8f0 !important;
+}
+
+.light-mode .bg-cardBg\/50 {
+    background-color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.light-mode .bg-gray-900\/50,
+.light-mode .bg-gray-800\/40 {
+    background-color: rgba(241, 245, 249, 0.8) !important;
+    border-color: #e2e8f0 !important;
+}
+
+.light-mode .text-gray-100,
+.light-mode .text-gray-200 {
+    color: #1e293b !important;
+}
+
+.light-mode .text-gray-300,
+.light-mode .text-gray-400 {
+    color: #475569 !important;
+}
+
+.light-mode .border-gray-700,
+.light-mode .border-gray-800,
+.light-mode .border-gray-700\/50 {
+    border-color: #e2e8f0 !important;
+}
+
+.light-mode input,
+.light-mode select,
+.light-mode textarea {
+    background-color: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    color: #1e293b !important;
+}
+
+.light-mode nav {
+    background-color: rgba(255, 255, 255, 0.9) !important;
+    border-color: #e2e8f0 !important;
+}
+
+.light-mode .from-gray-100 {
+    --tw-gradient-from: #1e293b !important;
+}
+
+.light-mode .to-gray-400 {
+    --tw-gradient-to: #64748b !important;
+}
+
+.light-mode #particleCanvas {
+    opacity: 0.4;
+}
+
+/* Page Transitions */
+.page-transition {
+    animation: slideFade 0.35s ease;
+}
+
+@keyframes slideFade {
+    0% {
+        opacity: 0;
+        transform: translateX(40px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
