@@ -1,4 +1,15 @@
+---
+title: Sugarcane Disease Detection System
+emoji: 🌾
+colorFrom: green
+colorTo: yellow
+sdk: docker
+app_port: 8000
+pinned: false
+---
+
 # 🌾 Sugarcane Disease & Insect Detection System
+
 
 An AI-powered web application for early detection and classification of diseases and insect pests in sugarcane crops, built with **FastAPI**, **YOLOv8**, and a full user authentication system.
 

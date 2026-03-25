@@ -18,7 +18,11 @@ COPY . .
 # Create required directories
 RUN mkdir -p logs interface/uploads interface/results
 
+# Environment
+ENV PYTHONPATH=/app
+ENV HOME=/app
+
 EXPOSE 8000
 
 # Production server via Uvicorn
-CMD ["uvicorn", "interface.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD ["uvicorn", "interface.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
