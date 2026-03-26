@@ -521,16 +521,6 @@ def sync_process_frame(image_bytes: bytes, model_type: str = 'detection', conf_t
 # API Endpoints
 # ---------------------------------------------------------
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    """Render main page"""
-    return templates.TemplateResponse("index.html", {"request": request})
-
-@app.get("/about", response_class=HTMLResponse)
-async def about(request: Request):
-    """Render about & contact page"""
-    return templates.TemplateResponse("about.html", {"request": request})
-
 @app.get("/api/health")
 async def health():
     """Health check endpoint"""
