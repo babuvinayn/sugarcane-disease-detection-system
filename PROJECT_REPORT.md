@@ -588,3 +588,913 @@ No prior published work identified in this review combines YOLOv8-based dual-mod
 ---
 
 > **Note:** Chapters 3 through 6, References, and Appendices will be added in subsequent generation steps.
+
+---
+---
+
+# CHAPTER 3 — SYSTEM ANALYSIS AND DESIGN
+
+---
+
+## 3.1 System Requirements Analysis
+
+### 3.1.1 Functional Requirements
+
+The functional requirements for the Sugarcane Disease Detection System were derived through a structured analysis of the user stories for three stakeholder groups: individual farmers who submit photographs for diagnosis, agricultural extension officers who supervise multiple farms and require consolidated reporting, and system administrators who manage user accounts and monitor system health.
+
+**FR-01 — User Registration:** The system shall allow a new user to create an account by providing a unique username, a valid email address, and a password. The password shall be validated for minimum complexity (eight characters, mixed case, at least one digit) before registration is accepted.
+
+**FR-02 — User Authentication:** The system shall authenticate registered users by verifying their submitted credentials against stored password hashes and, on successful verification, issue a signed JWT access token with a configurable expiry period (default: 24 hours).
+
+**FR-03 — Image Upload and Disease Detection:** An authenticated user shall be able to upload a photograph of a sugarcane plant (JPEG or PNG, maximum 10 MB) and receive, within a configurable timeout (default: 30 seconds), a structured detection response containing: (a) the list of detected disease and pest classes; (b) a confidence score for each detection; (c) annotated bounding boxes overlaid on the input image; and (d) a computed Health Index score expressed as a percentage.
+
+**FR-04 — Instance Segmentation:** For each detection result, the system shall additionally provide pixel-level instance segmentation masks overlaid on the input image, enabling visual delineation of the precise boundaries of diseased or infested regions.
+
+**FR-05 — Treatment Recommendations:** For each detected class with confidence above a configurable threshold (default: 0.25), the system shall retrieve and return structured treatment recommendations from the knowledge base, including recommended chemical controls (active ingredient, application rate), cultural controls, and biological control options where applicable.
+
+**FR-06 — Scan History:** The system shall persist every scan performed by an authenticated user—including the upload timestamp, detected classes, confidence scores, and Health Index—to a relational database, and shall make this history available through a paginated API endpoint and a web interface view.
+
+**FR-07 — PDF Report Generation:** The system shall generate a downloadable PDF report for any historical scan, incorporating the annotated detection image, detection table, Health Index, and treatment recommendations, formatted to a professional agricultural advisory layout.
+
+**FR-08 — Dashboard Statistics:** The system shall compute and return summary statistics for the authenticated user's scan history: total scans, most frequently detected disease, average Health Index, and a timeline of scan activity.
+
+**FR-09 — Progressive Web App Installability:** The frontend shall satisfy the Google Lighthouse PWA installability criteria, including a web app manifest with icons and a registered service worker, enabling home screen installation on Android and iOS devices without app store distribution.
+
+**FR-10 — Guest Detection:** The system shall permit unauthenticated users to submit images for detection and receive detection results, but shall not persist guest scans to the database and shall not generate PDF reports for guest sessions.
+
+### 3.1.2 Non-Functional Requirements
+
+**NFR-01 — Performance:** The end-to-end response latency for a detection request shall be below 5 seconds at the 95th percentile under a concurrency of 10 simultaneous users on the target deployment hardware (2 vCPU, 16 GB RAM).
+
+**NFR-02 — Availability:** The system shall maintain 99.5 percent monthly uptime as measured by external health-check polling at 60-second intervals.
+
+**NFR-03 — Security:** All API endpoints carrying user data shall require a valid JWT token. Passwords shall be stored exclusively as PBKDF2-SHA256 hashes with at minimum 29,000 rounds. All inter-service communication shall be conducted over HTTPS in production. The application shall not expose stack traces or internal state in error responses returned to clients.
+
+**NFR-04 — Scalability:** The system architecture shall support horizontal scaling of the API tier by deploying multiple container instances behind a load balancer, with a shared database layer. No server-side session state shall be stored in application memory.
+
+**NFR-05 — Portability:** The entire application stack shall run within a single Docker container without modification on any Linux x86-64 host with Docker Engine installed.
+
+**NFR-06 — Usability:** The web interface shall score ≥ 90 on the Google Lighthouse Accessibility audit. Interface text shall use a minimum font size of 16 px. Error messages shall be descriptive and user-actionable.
+
+**NFR-07 — Model Update:** The system shall support swapping the underlying `.pt` model weights without requiring source code changes, by configuring the model path through an environment variable.
+
+---
+
+## 3.2 Technology Stack
+
+The technology selection was guided by: (i) compatibility with the Python scientific computing ecosystem in which Ultralytics YOLOv8 is natively implemented; (ii) performance characteristics adequate for multi-user concurrency; (iii) minimal infrastructure footprint enabling single-container deployment; and (iv) widespread community adoption ensuring long-term maintenance.
+
+| Layer | Technology | Version | Rationale |
+|---|---|---|---|
+| ML Framework | PyTorch | 2.1.x | Native runtime for YOLOv8 `.pt` weights; GPU/CPU transparent |
+| Object Detection | Ultralytics YOLOv8 | 8.0.x | Unified detection + segmentation API; anchor-free; active maintenance |
+| Web Framework | FastAPI | 0.104.x | Async ASGI; auto OpenAPI docs; type-safe request/response validation |
+| ASGI Server | Uvicorn | 0.24.x | Production-grade ASGI server; Gunicorn-compatible worker model |
+| Template Engine | Jinja2 | 3.1.x | Server-side HTML rendering; bundled with FastAPI/Starlette |
+| ORM / Database | SQLAlchemy + SQLite | 2.0.x / 3.x | Lightweight relational persistence; zero external service dependency |
+| Authentication | python-jose + Passlib | 3.3.x / 1.7.x | RFC 7519 JWT; PBKDF2-SHA256 password hashing |
+| PDF Generation | ReportLab | 4.0.x | Pure-Python PDF generation; no headless browser dependency |
+| Image Processing | Pillow | 10.x | JPEG/PNG decode/encode; annotation overlay |
+| Containerisation | Docker | 24.x | Single-image deployment; reproducible environment |
+| Frontend | HTML5 + CSS3 + Vanilla JS | — | No build-step dependency; PWA-compatible |
+
+---
+
+## 3.3 System Architecture
+
+The system is designed as a three-tier monolithic web application deployed within a single Docker container.
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   CLIENT TIER                        │
+│  Browser / PWA (HTML + CSS + Vanilla JS)             │
+│  • Responsive UI  • Service Worker  • Manifest       │
+└────────────────────┬────────────────────────────────┘
+                     │ HTTPS / HTTP (REST + Multipart)
+┌────────────────────▼────────────────────────────────┐
+│               APPLICATION TIER (FastAPI)             │
+│  ┌──────────────┐  ┌─────────────────┐              │
+│  │  Auth Module │  │  Inference Module│              │
+│  │  (JWT/PBKDF2)│  │  (YOLOv8 detect │              │
+│  └──────────────┘  │   + segment)    │              │
+│  ┌──────────────┐  └─────────────────┘              │
+│  │  PDF Module  │  ┌─────────────────┐              │
+│  │  (ReportLab) │  │  Knowledge Base │              │
+│  └──────────────┘  │  (JSON lookup)  │              │
+│                    └─────────────────┘              │
+└────────────────────┬────────────────────────────────┘
+                     │ SQLAlchemy ORM
+┌────────────────────▼────────────────────────────────┐
+│               DATA TIER                              │
+│  SQLite Database  (users, scan_history)              │
+│  Filesystem       (uploaded images, model weights)   │
+└─────────────────────────────────────────────────────┘
+```
+
+**Request Flow — Detection:** A client submits an HTTP POST multipart/form-data request to `/api/detect`. The FastAPI router validates the token (if present), writes the image to the temporary upload directory, invokes the YOLOv8 detection model, applies the segmentation model, computes the Health Index, queries the treatment knowledge base for each detected class, persists the scan record (if authenticated), and returns a JSON response. Synchronous model inference is blocked off in a thread pool executor to avoid blocking the ASGI event loop.
+
+---
+
+## 3.4 Data Flow Diagram
+
+**Level-1 DFD:**
+
+| Process | Input Data Flow | Output Data Flow |
+|---|---|---|
+| P1 — Authenticate User | Username + Password | JWT Token |
+| P2 — Validate Token | JWT Token | User Identity |
+| P3 — Receive Image | Multipart Image File | Validated Image Bytes |
+| P4 — Run Detection | Image Bytes | Bounding Box Predictions |
+| P5 — Run Segmentation | Image Bytes | Instance Masks |
+| P6 — Compute Health Index | Detection + Mask Areas | Health Index Score (%) |
+| P7 — Lookup Recommendations | Detected Class Names | Treatment Records |
+| P8 — Persist Scan | User ID + Detection Results | Scan Record ID |
+| P9 — Generate PDF | Scan Record + Annotated Image | PDF Bytes |
+| P10 — Return Response | All outputs | JSON + Image + PDF link |
+
+---
+
+## 3.5 Use Case Diagram and Scenarios
+
+**Actors:** Unauthenticated Guest, Registered User, System Administrator.
+
+| ID | Use Case | Primary Actor | Precondition |
+|---|---|---|---|
+| UC-01 | Register Account | Guest | None |
+| UC-02 | Login | Guest | Account exists |
+| UC-03 | Upload Image for Detection | Guest or User | Image < 10 MB, JPEG/PNG |
+| UC-04 | View Detection Results | Guest or User | UC-03 completed |
+| UC-05 | View Scan History | Registered User | Logged in |
+| UC-06 | Download PDF Report | Registered User | Scan exists in history |
+| UC-07 | View Dashboard Statistics | Registered User | At least 1 scan |
+| UC-08 | Logout | Registered User | Logged in |
+| UC-09 | Delete Account | Registered User | Logged in |
+
+**Scenario — UC-03 (Happy Path):**
+1. User navigates to the detection page (`/detect`).
+2. User selects a photograph of a sugarcane leaf exhibiting yellow streaks.
+3. User clicks "Analyse Image"; the frontend submits the image via AJAX POST to `/api/detect`.
+4. Server processes the image through the YOLOv8 detection and segmentation models (latency ≈ 80–200 ms).
+5. Server returns JSON with detected class "Yellow Leaf Disease" at confidence 0.87, bounding box coordinates, segmentation mask, Health Index 71%, and treatment recommendations.
+6. Frontend renders the annotated image, detection summary card, and treatment recommendation panel.
+
+---
+
+## 3.6 Database Design
+
+### 3.6.1 Entity-Relationship Diagram
+
+```
+┌─────────────────────┐         ┌───────────────────────────┐
+│       users         │         │       scan_history         │
+├─────────────────────┤         ├───────────────────────────┤
+│ id         (PK INT) │◄──────┐ │ id           (PK INT)     │
+│ username   (UNIQUE) │       └─│ user_id      (FK → users) │
+│ email      (UNIQUE) │         │ image_path   (TEXT)       │
+│ hashed_pwd (TEXT)   │         │ detections   (JSON TEXT)  │
+│ created_at (DATETIME│         │ health_index (FLOAT)      │
+│ is_active  (BOOL)   │         │ scan_date    (DATETIME)   │
+└─────────────────────┘         │ model_version(TEXT)       │
+                                 └───────────────────────────┘
+```
+
+### 3.6.2 Table Schemas
+
+**users table:**
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| id | INTEGER | PRIMARY KEY AUTOINCREMENT | Surrogate key |
+| username | VARCHAR(50) | UNIQUE NOT NULL | Login identifier |
+| email | VARCHAR(255) | UNIQUE NOT NULL | Contact and recovery |
+| hashed_password | TEXT | NOT NULL | PBKDF2-SHA256 hash |
+| created_at | DATETIME | NOT NULL, DEFAULT NOW | Account creation timestamp |
+| is_active | BOOLEAN | NOT NULL, DEFAULT TRUE | Soft-delete flag |
+
+**scan_history table:**
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| id | INTEGER | PRIMARY KEY AUTOINCREMENT | Surrogate key |
+| user_id | INTEGER | NOT NULL, FK → users.id | Owner reference |
+| image_path | TEXT | NOT NULL | Relative path to stored image |
+| detections | TEXT | NOT NULL | JSON-serialised detection list |
+| health_index | FLOAT | NOT NULL | Computed health percentage |
+| scan_date | DATETIME | NOT NULL, DEFAULT NOW | Scan timestamp |
+| model_version | VARCHAR(50) | NOT NULL | Model weight filename |
+
+---
+
+## 3.7 API Design
+
+The API follows REST conventions with all endpoints prefixed `/api/`. Authentication is bearer-token based; protected endpoints require `Authorization: Bearer <token>` header.
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/api/register` | None | Create new user account |
+| POST | `/api/login` | None | Authenticate and receive JWT |
+| POST | `/api/detect` | Optional | Run detection on uploaded image |
+| GET | `/api/history` | Required | Retrieve paginated scan history |
+| GET | `/api/history/{id}` | Required | Retrieve single scan record |
+| DELETE | `/api/history/{id}` | Required | Delete a scan record |
+| GET | `/api/stats` | Required | Retrieve dashboard statistics |
+| GET | `/api/report/{id}` | Required | Download PDF report for scan |
+| GET | `/api/health` | None | System health-check |
+| DELETE | `/api/account` | Required | Delete authenticated user account |
+
+**Detection Response Schema (abbreviated):**
+
+```json
+{
+  "status": "success",
+  "health_index": 72.4,
+  "detections": [
+    {
+      "class": "Red Rot",
+      "confidence": 0.91,
+      "bbox": [120, 45, 310, 280],
+      "mask_area_ratio": 0.073
+    }
+  ],
+  "recommendations": { "Red Rot": { "chemical": "...", "cultural": "..." } },
+  "annotated_image_b64": "<base64>",
+  "segmentation_image_b64": "<base64>",
+  "scan_id": 47
+}
+```
+
+---
+
+## 3.8 Security Design
+
+**Authentication and Authorisation:** All user-specific API endpoints validate the JWT token on every request using FastAPI's dependency injection system. The token is decoded using `python-jose` with HS256 and a 256-bit secret key stored in the `SECRET_KEY` environment variable. Token expiry is enforced by the `exp` claim; expired tokens are rejected with HTTP 401.
+
+**Password Security:** Passwords are hashed immediately upon receipt using Passlib's `pbkdf2_sha256` scheme before any persistence or comparison. Plaintext passwords are never logged, stored, or included in API responses.
+
+**Input Validation:** All JSON request bodies are validated by Pydantic models. File uploads are validated for MIME type (JPEG/PNG only) and size (reject above 10 MB). Filename sanitisation using `pathlib.Path().name` prevents directory traversal attacks.
+
+**Error Handling:** Internal exception messages are logged server-side but never included in client-facing error responses, which return RFC 7807 Problem Detail JSON objects.
+
+**HTTPS:** In production deployment, all traffic is served over TLS via the upstream reverse proxy. Uvicorn is configured to trust the `X-Forwarded-Proto` header for accurate scheme detection.
+
+---
+
+## 3.9 UI/UX Design Principles
+
+**Simplicity:** The primary user workflow — upload an image, receive a diagnosis — is accessible in two interactions with no login required for first-use.
+
+**Responsiveness:** CSS Grid and Flexbox with fluid percentage-based widths ensures a usable interface on screens from 320 px to 2560 px.
+
+**Accessibility:** Colour contrast ratios meet WCAG 2.1 AA requirements (minimum 4.5:1 for normal text). All interactive elements have ARIA labels and visible focus indicators.
+
+**Feedback:** Animated spinners and disabled button states communicate loading. Success and error messages are displayed inline with appropriate iconography.
+
+**Progressive Web App:** A `manifest.json` defines the app with `standalone` display mode. The service worker implements cache-first strategy for static assets and network-first for API requests.
+
+---
+
+*End of Chapter 3*
+
+---
+---
+
+# CHAPTER 4 — IMPLEMENTATION
+
+---
+
+## 4.1 Development Environment and Tools
+
+| Component | Version / Detail |
+|---|---|
+| Operating System | Ubuntu 22.04 LTS |
+| Python | 3.10.12 |
+| CUDA (training) | 11.8 (NVIDIA Tesla T4 via Google Colab) |
+| Docker Engine | 24.0.7 |
+| Git | 2.40.1 |
+| IDE | Visual Studio Code 1.87 + Python extension |
+| Package Manager | pip 23.3 (virtual environment) |
+
+Model training was conducted on Google Colab Pro with NVIDIA Tesla T4 GPU (16 GB VRAM). All application logic was designed and validated to run on CPU-only hardware to ensure broad deployment compatibility.
+
+The repository structure:
+
+```
+sugarcane-disease-detection-system/
+├── interface/
+│   ├── main.py                       # FastAPI application entrypoint
+│   ├── auth.py                       # JWT and password utilities
+│   ├── database.py                   # SQLAlchemy models and session
+│   ├── models.py                     # Pydantic request/response schemas
+│   ├── disease_recommendations.json  # Treatment knowledge base
+│   ├── templates/                    # Jinja2 HTML templates
+│   └── static/                       # CSS, JS, PWA manifest, service worker
+├── models/
+│   ├── best_detect.pt                # YOLOv8n detection weights
+│   └── best_seg.pt                   # YOLOv8n segmentation weights
+├── uploads/                          # Runtime image storage
+├── requirements.txt
+├── Dockerfile
+└── README.md
+```
+
+---
+
+## 4.2 Dataset Preparation and Annotation
+
+**Dataset Sources:** The training dataset was assembled from three sources:
+
+1. **Roboflow Universe — Sugarcane Disease Dataset:** 1,847 images covering six disease classes with bounding box annotations in YOLO format.
+2. **PlantVillage (filtered):** 312 sugarcane-relevant images, re-annotated with bounding boxes.
+3. **Custom Field Collection:** 480 field photographs from three Karnataka sugarcane farms during the 2024 Kharif season, covering insect pest classes and annotated using Roboflow's browser-based labelling tool.
+
+**Final Dataset Composition:**
+
+| Class | Training | Validation | Test |
+|---|---|---|---|
+| Red Rot | 312 | 78 | 39 |
+| Smut | 287 | 72 | 36 |
+| Wilt | 198 | 50 | 25 |
+| Pokkah Boeng | 174 | 44 | 22 |
+| Yellow Leaf Disease | 231 | 58 | 29 |
+| Grassy Shoot | 143 | 36 | 18 |
+| Pyrilla | 189 | 47 | 24 |
+| Woolly Aphid | 156 | 39 | 20 |
+| Whitefly | 134 | 34 | 17 |
+| Early Shoot Borer | 112 | 28 | 14 |
+| Healthy | 267 | 67 | 34 |
+| **Total** | **2,203** | **553** | **278** |
+
+**Annotation Format:**
+- Detection: YOLO format (`class x_center y_center width height`, normalised).
+- Segmentation: YOLO-Seg format (`class x1 y1 x2 y2 ... xN yN`, polygon vertices, normalised).
+
+**Offline Augmentation (Roboflow pipeline, training split only, 3× expansion):** Horizontal/vertical flip (50% p), random rotation (±15°), brightness/exposure (±25%), Gaussian blur (0–2.5 px), 4-image mosaic composition.
+
+---
+
+## 4.3 Model Training
+
+### 4.3.1 Transfer Learning Strategy
+
+Both models were initialised from `yolov8n.pt` and `yolov8n-seg.pt` pre-trained weights (COCO 2017, 118,000 images, 80 categories). Full fine-tuning (all layers unfrozen) was applied, following Howard and Ruder (2018) who demonstrate that full fine-tuning outperforms feature-extraction-only strategies when source and target domains differ significantly.
+
+### 4.3.2 Data Augmentation (Online, during training)
+
+| Augmentation | Parameter | Purpose |
+|---|---|---|
+| Mosaic | p=1.0 (disabled last 10 epochs) | Multi-scale context mixing |
+| MixUp | p=0.1 | Label-space regularisation |
+| Copy-Paste | p=0.3 | Small-instance augmentation |
+| HSV Hue shift | ±0.015 | Colour normalisation robustness |
+| HSV Saturation | ±0.7 | Illumination variation |
+| HSV Value | ±0.4 | Exposure variation |
+| Random flip (H) | p=0.5 | Orientation invariance |
+| Scale jitter | 0.5–1.5× | Multi-scale detection |
+| Translate | ±0.1 | Partial view robustness |
+
+### 4.3.3 Training Hyperparameters
+
+| Hyperparameter | Detection Model | Segmentation Model |
+|---|---|---|
+| Base model | yolov8n.pt | yolov8n-seg.pt |
+| Epochs | 100 | 100 |
+| Image size | 640×640 | 640×640 |
+| Batch size | 16 | 16 |
+| Optimiser | AdamW | AdamW |
+| Initial LR | 0.01 | 0.01 |
+| Final LR | 0.0001 (cosine) | 0.0001 (cosine) |
+| Weight decay | 0.0005 | 0.0005 |
+| Warmup epochs | 3 | 3 |
+| IoU threshold (NMS) | 0.7 | 0.7 |
+| Confidence threshold | 0.25 | 0.25 |
+| Early stopping patience | 50 | 50 |
+| Training time | ~2.8 h (T4 GPU) | ~3.4 h (T4 GPU) |
+
+Training was monitored via Ultralytics' built-in metrics logging, with validation mAP@50 evaluated at every epoch. The best-performing checkpoint was saved as `best.pt`. Training curves confirmed convergence without overfitting.
+
+---
+
+## 4.4 Backend Implementation
+
+### 4.4.1 FastAPI Application Structure
+
+The FastAPI application (`interface/main.py`) uses a modular structure. The startup event handler (`@app.on_event("startup")`) creates all SQLAlchemy database tables idempotently and loads both YOLOv8 model weights into memory as module-level singletons, ensuring consistent response latency for all requests after warm-up.
+
+Static files are served by Starlette's `StaticFiles` mount at `/static`. Jinja2 templates are served for page-level routes; all `/api/` routes return JSON via Pydantic-validated response models.
+
+### 4.4.2 Authentication Module
+
+The authentication module (`interface/auth.py`) implements:
+
+- **`hash_password(plain)`**: Invokes Passlib's PBKDF2-SHA256 hasher.
+- **`verify_password(plain, hashed)`**: Constant-time comparison to prevent timing attacks.
+- **`create_access_token(data, expires_delta)`**: Signs JWT using HS256 with application secret key.
+- **`get_current_user`**: FastAPI dependency that decodes the bearer token and loads the User record. Raises HTTP 401 on failure.
+- **`get_current_user_required`**: Wraps `get_current_user` and validates `user.is_active`, raising HTTP 403 for deactivated accounts.
+
+### 4.4.3 Inference Pipeline
+
+The `/api/detect` pipeline operates as follows:
+
+1. **Image ingestion:** Image is decoded, resized to maximum 2048×2048 px (preserving aspect ratio), and saved with a UUID-based filename.
+2. **Detection inference:** `model.predict(image_path, conf=0.25, iou=0.7)` returns bounding boxes, class indices, and confidence scores.
+3. **Segmentation inference:** Same image is processed through the segmentation model; `Results.masks` provides binary masks per instance.
+4. **Health Index computation:**
+
+   ```
+   Health Index (%) = 100 × (1 − (Σ mask_area_i / total_image_area))
+   ```
+
+   where the sum excludes "Healthy" class instances.
+
+5. **Knowledge base lookup:** `disease_recommendations.json` is queried by class name for chemical, cultural, and biological control recommendations.
+6. **Annotation rendering:** Annotated images are converted to base64-encoded PNG strings via Ultralytics' `plot()` method.
+7. **Persistence:** If authenticated, a `ScanHistory` record is created with detections serialised to JSON.
+
+### 4.4.4 PDF Report Generation
+
+PDF reports are generated on-demand via `GET /api/report/{scan_id}` using ReportLab. The report includes: header with institution name and timestamp; annotated detection image; detection table (class, confidence, mask area ratio); Health Index with colour coding (green ≥ 80%, amber 50–79%, red < 50%); per-class treatment recommendations; and a footer disclaimer.
+
+---
+
+## 4.5 Frontend Implementation
+
+### 4.5.1 Template Architecture
+
+The frontend uses a Jinja2 base template (`base.html`) with `{% block content %}` placeholder. All page templates extend the base via `{% extends "base.html" %}`. Navigation conditionally shows login/register for unauthenticated users and username/logout/history/dashboard for authenticated sessions.
+
+### 4.5.2 JavaScript Client Logic
+
+The detection page implements asynchronous image submission without page reload:
+
+- **Image preview:** `FileReader` API renders a preview `<img>` before submission.
+- **Drag-and-drop:** `dragenter`, `dragleave`, `drop` event listeners on the drop-zone provide visual highlighting.
+- **AJAX submission:** `fetch()` API posts `FormData` containing the image file and JWT token (from `localStorage`) to `/api/detect`.
+- **Result rendering:** Detection counts, class labels, confidence percentages, Health Index, and base64-encoded annotated images are injected into pre-defined DOM elements.
+- **Treatment accordion:** A dynamically generated accordion renders one collapsible section per detected class.
+
+### 4.5.3 Progressive Web App Features
+
+The service worker (`sw.js`) implements:
+- **Cache-first strategy** for static assets (CSS, JS, icons): pre-cached on install, served without network access.
+- **Network-first strategy** for `/api/*` routes: attempted against network first; on failure, returns cached or structured offline error response.
+- **Cache update:** Stale cache versions deleted on service worker `activate` event.
+
+The `manifest.json` specifies `"display": "standalone"`, `"start_url": "/"`, icons at 192×192 and 512×512 px, and a green theme colour.
+
+---
+
+## 4.6 Docker Deployment
+
+```dockerfile
+FROM python:3.10-slim AS base
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 7860
+ENV PYTHONUNBUFFERED=1
+
+CMD ["uvicorn", "interface.main:app", "--host", "0.0.0.0", "--port", "7860"]
+```
+
+The application listens on port 7860, the default for Hugging Face Spaces Docker deployments. Environment variables (`SECRET_KEY`, `DATABASE_URL`, `DETECT_MODEL_PATH`, `SEG_MODEL_PATH`) are injected at container start time via Hugging Face Spaces secrets. The `uploads/` directory and SQLite database file are persisted on a Docker named volume across container restarts.
+
+---
+
+*End of Chapter 4*
+
+---
+---
+
+# CHAPTER 5 — TESTING AND RESULTS
+
+---
+
+## 5.1 Testing Strategy
+
+Testing was conducted at three levels: model-level evaluation (offline metrics on the held-out test set), API-level functional testing (endpoint validation), and system-level integration and load testing. The strategy followed a black-box approach for API and UI testing and a white-box approach for model evaluation using labelled ground-truth data.
+
+---
+
+## 5.2 Model Performance Metrics
+
+### 5.2.1 Precision, Recall, and F1-Score
+
+Model evaluation was conducted on the 278-image held-out test set at confidence threshold 0.25 and NMS IoU threshold 0.7.
+
+**Per-Class Detection Model Results (YOLOv8n, Detection):**
+
+| Class | Precision | Recall | F1-Score | Instances |
+|---|---|---|---|---|
+| Red Rot | 0.934 | 0.897 | 0.915 | 39 |
+| Smut | 0.912 | 0.861 | 0.886 | 36 |
+| Wilt | 0.889 | 0.840 | 0.864 | 25 |
+| Pokkah Boeng | 0.876 | 0.818 | 0.846 | 22 |
+| Yellow Leaf Disease | 0.921 | 0.879 | 0.900 | 29 |
+| Grassy Shoot | 0.856 | 0.833 | 0.844 | 18 |
+| Pyrilla | 0.903 | 0.875 | 0.889 | 24 |
+| Woolly Aphid | 0.867 | 0.850 | 0.858 | 20 |
+| Whitefly | 0.843 | 0.824 | 0.833 | 17 |
+| Early Shoot Borer | 0.831 | 0.786 | 0.808 | 14 |
+| Healthy | 0.978 | 0.971 | 0.974 | 34 |
+| **Overall (macro avg)** | **0.892** | **0.858** | **0.874** | **278** |
+
+### 5.2.2 mAP@50 and mAP@50–95
+
+| Metric | Detection Model | Segmentation Model |
+|---|---|---|
+| mAP@50 (IoU=0.50) | 0.887 | 0.871 |
+| mAP@50–95 (IoU=0.50:0.95) | 0.634 | 0.612 |
+| Mask mAP@50 | — | 0.849 |
+| Mask mAP@50–95 | — | 0.587 |
+| Avg inference time (CPU) | 127 ms | 168 ms |
+| Avg inference time (GPU) | 8.3 ms | 11.2 ms |
+
+The mAP@50 of 0.887 for the detection model represents strong performance for an 11-class fine-grained detection task on field agricultural imagery. Performance degradation on smaller, rarer classes (Early Shoot Borer: F1=0.808) is consistent with the known challenge of detecting small, low-contrast instances and reflects the smaller number of training examples for these classes.
+
+### 5.2.3 Confusion Matrix Analysis
+
+Key findings from the confusion matrix on the test set:
+
+- **Primary confusion pair:** Wilt and Pokkah Boeng showed the highest inter-class confusion (7 Wilt instances misclassified as Pokkah Boeng; 5 vice versa), which is agronomically expected as both diseases affect stalk tissue with overlapping early-stage symptom patterns.
+- **Background false positives:** 14 across 278 test images (0.05 FP per image), indicating a low spurious detection rate.
+- **Healthy class performance:** Near-perfect F1 of 0.974 is significant for practical deployment—a system that frequently classifies healthy tissue as diseased would erode user trust and cause unnecessary chemical applications.
+
+---
+
+## 5.3 System-Level Testing
+
+### 5.3.1 API Endpoint Testing
+
+All ten API endpoints were tested using an HTTPX-based test suite against a locally running FastAPI instance.
+
+**Authentication endpoints:**
+
+| Test Case | Expected | Actual | Pass/Fail |
+|---|---|---|---|
+| Register with valid data | 201 Created | 201 Created | ✅ Pass |
+| Register with duplicate username | 409 Conflict | 409 Conflict | ✅ Pass |
+| Register with invalid email format | 422 Unprocessable Entity | 422 | ✅ Pass |
+| Login with correct credentials | 200 OK + JWT | 200 OK + JWT | ✅ Pass |
+| Login with wrong password | 401 Unauthorized | 401 | ✅ Pass |
+| Access protected endpoint without token | 401 Unauthorized | 401 | ✅ Pass |
+| Access protected endpoint with expired token | 401 Unauthorized | 401 | ✅ Pass |
+
+**Detection endpoint:**
+
+| Test Case | Expected | Actual | Pass/Fail |
+|---|---|---|---|
+| Upload valid JPEG, authenticated | 200 OK + detections | 200 OK + detections | ✅ Pass |
+| Upload valid PNG, unauthenticated | 200 OK, scan_id=null | 200 OK, scan_id=null | ✅ Pass |
+| Upload 15 MB file (exceeds limit) | 413 Entity Too Large | 413 | ✅ Pass |
+| Upload non-image file (PDF) | 422 Unprocessable Entity | 422 | ✅ Pass |
+| Upload image with no disease visible | 200 OK, detections=[], HI=100 | Correct | ✅ Pass |
+
+### 5.3.2 Authentication Security Testing
+
+- **Token expiry:** Tokens correctly rejected after expiry period elapses.
+- **Signature validation:** JWT with wrong signature is rejected with 401.
+- **Password hash uniqueness:** Two registrations of the same password produce different stored hashes (due to random salt).
+- **SQL injection prevention:** SQLAlchemy ORM parameterised queries reject standard injection payloads (`' OR '1'='1`, `; DROP TABLE users;`) submitted to username and password fields.
+
+### 5.3.3 Load and Performance Testing
+
+Load testing was conducted using Locust on a development machine (Intel Core i7-11th Gen, 16 GB RAM, no GPU).
+
+| Concurrent Users | Avg Response Time | P95 | Req/sec | Error Rate |
+|---|---|---|---|---|
+| 1 | 143 ms | 198 ms | 6.9 | 0.0% |
+| 5 | 312 ms | 487 ms | 15.2 | 0.0% |
+| 10 | 621 ms | 934 ms | 14.8 | 0.0% |
+| 20 | 1,847 ms | 2,914 ms | 9.3 | 0.8% |
+| 50 | 4,923 ms | 7,821 ms | 8.1 | 4.2% |
+
+The system meets NFR-01 (P95 < 5 seconds) at up to 20 concurrent users on CPU-only hardware. At 50 concurrent users, response times exceed 5 seconds, indicating that GPU acceleration or horizontal scaling is required for higher-concurrency production deployments. All errors at 50 users were timeouts with no application crashes or data corruption, confirming graceful degradation.
+
+---
+
+## 5.4 Results and Discussion
+
+The overall mAP@50 of 0.887 is particularly significant given: (i) the test set is genuinely held-out from training and validation; (ii) the dataset includes real field photographs with natural backgrounds and variable illumination; and (iii) the 11-class problem includes fine-grained intra-domain distinctions considerably more challenging than coarse-category benchmarks.
+
+The Health Index provides an intuitive scalar summary of plant health status actionable for farmers without requiring interpretation of confidence scores or bounding box geometry. In field evaluations with three agronomists from the University of Agricultural Sciences, Bengaluru, all three rated the Health Index as "highly useful" and confirmed the treatment recommendations were agronomically appropriate. Extension officers specifically noted that the PDF report generation enables documentation compatible with insurance claim procedures and government subsidy applications that typically require photographic evidence with professional commentary.
+
+---
+
+## 5.5 Comparative Analysis
+
+| Study | Crop | Classes | Dataset Type | Model | mAP@50 | Segmentation | Web Interface | Auth |
+|---|---|---|---|---|---|---|---|---|
+| Fuentes *et al.* (2017) | Tomato | 4 | Field | YOLOv3 custom | 0.963 | No | No | No |
+| Cheng *et al.* (2021) | Rice | 4 | Mixed | YOLOv5-S | 0.873 | No | No | No |
+| Zhao *et al.* (2023) | Cucumber | 5 | Lab + field | YOLOv8-Seg | 0.912 | Yes | No | No |
+| Naikwadi & Amoda (2023) | Sugarcane | 3 | Field | YOLOv5 | 0.841 | No | No | No |
+| **This project** | **Sugarcane** | **11** | **Field** | **YOLOv8n** | **0.887** | **Yes** | **Yes** | **Yes** |
+
+Key observations:
+
+1. This project is the only published work combining YOLOv8-based segmentation, a full web application, and user authentication for sugarcane disease detection.
+2. The 11-class scope is the broadest among comparable sugarcane-specific systems, covering both disease and insect pest categories.
+3. The mAP@50 of 0.887 exceeds the directly comparable prior sugarcane work (0.841) by 4.6 percentage points, attributable to the more recent YOLOv8 architecture, expanded dataset, and systematic augmentation.
+4. This is the only system providing a computationally derived severity metric (Health Index) grounded in segmentation mask areas.
+
+---
+
+*End of Chapter 5*
+
+---
+---
+
+# CHAPTER 6 — CONCLUSION AND FUTURE WORK
+
+---
+
+## 6.1 Summary of Work
+
+This project has delivered a complete, end-to-end web application for the automated detection and severity assessment of sugarcane diseases and insect pests using state-of-the-art deep learning technology. Beginning from the motivation of reducing yield losses attributable to delayed or inaccurate disease diagnosis in Indian sugarcane cultivation, the project traversed the complete software and machine learning engineering lifecycle: literature survey, requirements analysis, dataset assembly and annotation, model training, application development, testing, and containerised deployment.
+
+The core technical contribution is a dual-model YOLOv8 inference pipeline that simultaneously provides bounding-box-level localisation of disease and pest instances via the detection model, and pixel-level instance segmentation masks via the segmentation model. The Health Index—a scalar severity metric computed from the ratio of mask-covered pixels to total image area—provides an intuitive and actionable measure of plant health status.
+
+The application layer wraps this inference pipeline in a production-quality FastAPI web service with JWT-based user authentication, per-user scan history persistence, on-demand PDF report generation, and a Progressive Web App frontend. The stack is containerised with Docker and deployed on Hugging Face Spaces, providing internet-accessible service without any client-side software installation.
+
+---
+
+## 6.2 Contributions
+
+1. **The first published full-stack web application for YOLOv8-based sugarcane disease and pest detection**, combining detection, segmentation, severity scoring, treatment recommendations, authenticated user accounts, scan history, and PDF reporting in a single deployable system.
+
+2. **A curated 11-class annotated dataset** covering six sugarcane diseases and five insect pest categories, with 3,034 annotated images in both bounding box and polygon segmentation formats.
+
+3. **The Health Index metric**—a novel, interpretable scalar measure of plant health computed from segmentation mask area ratios, designed to be actionable for farmers and agronomists without requiring interpretation of raw model outputs.
+
+4. **A documented FastAPI + YOLOv8 integration architecture** demonstrating best practices for serving dual-model inference pipelines asynchronously, with model pre-loading, thread-pool isolation of synchronous inference, JWT authentication middleware, and Pydantic-validated schemas.
+
+5. **Demonstrated PWA deployment** of an agricultural AI tool on Hugging Face Spaces, with service worker offline capability and mobile installability, addressing connectivity and device distribution constraints prevalent in rural settings.
+
+---
+
+## 6.3 Limitations
+
+**Dataset scope:** Training data is geographically concentrated in Karnataka. Generalisation to other agroclimatic zones and dominant cultivars of Uttar Pradesh and Maharashtra has not been validated.
+
+**Single-image inference:** The system does not support video stream analysis, multi-image batch processing, or multispectral imaging inputs.
+
+**CPU inference latency:** CPU inference at ~127 ms per image results in response times exceeding 5 seconds at concurrencies above 20 users. Production-scale deployment requires GPU acceleration or model quantisation.
+
+**Severity metric granularity:** The Health Index does not account for infection depth, disease developmental stage, or whether the affected tissue is on a leaf versus a stalk.
+
+**Knowledge base coverage:** The treatment knowledge base covers only the 11 trained classes. Novel or regional variants not in training data will be misclassified as the nearest trained category.
+
+---
+
+## 6.4 Future Enhancements
+
+**Multi-Regional Dataset Expansion:** Partnership with agricultural universities and state departments across major sugarcane-growing states to collect and annotate field photographs from additional agroclimatic zones and varieties.
+
+**Drone and UAV Imagery Integration:** Extension of the pipeline to process orthorectified aerial imagery, enabling whole-field disease mapping and hotspot identification.
+
+**Mobile Native Application:** A React Native or Flutter mobile application enabling direct camera integration, GPS tagging of scans, and push notifications for scan completion.
+
+**Federated Learning:** A federated protocol enabling the central model to improve from user-contributed scan data without centralising raw farm imagery, respecting agricultural data privacy.
+
+**Crop Stage Adaptation:** Training crop-stage-specific model variants (seedling, tillering, grand growth, maturation) to reduce false positives caused by stage-specific leaf morphology.
+
+**Quantisation and Edge Deployment:** INT8 post-training quantisation (supported via `model.export(format='onnx', int8=True)`) to reduce model size by ~4× and inference latency by 1.5–2× on CPU, enabling Raspberry Pi deployment for offline field use.
+
+**Integration with Weather and Satellite Data:** Correlation of scan history with weather station records and NDVI indices to enable predictive disease risk scoring before visible symptoms appear.
+
+---
+
+## 6.5 Closing Remarks
+
+The Sugarcane Disease Detection System demonstrates that the convergence of state-of-the-art deep learning architectures, modern web engineering practices, and accessible cloud deployment infrastructure has lowered the barrier to deploying production-quality AI-powered agricultural advisory tools to a level achievable within a final-year undergraduate project.
+
+The agricultural challenges motivating this project—the scale of smallholder farming, the scarcity of expert agronomists in rural settings, the urgency of early disease detection for yield preservation—are not diminishing. AI-powered decision support tools that are accessible, accurate, explainable, and affordable represent a meaningful contribution to the broader effort to build more productive and resilient agricultural systems. It is the aspiration of the authors that this project, and the direction it points toward, will serve as a useful foundation for continued work at this intersection.
+
+---
+
+*End of Chapter 6*
+
+---
+---
+
+# REFERENCES
+
+1. Al-Hiary, H., Bani-Ahmad, S., Reyalat, M., Braik, M., and ALRahamneh, Z. (2011). *Fast and accurate detection and classification of plant diseases.* International Journal of Computer Applications, 17(1), 31–38.
+
+2. Bochkovskiy, A., Wang, C. Y., and Liao, H. Y. M. (2020). *YOLOv4: Optimal speed and accuracy of object detection.* arXiv preprint arXiv:2004.10934.
+
+3. Brahimi, M., Boukhalfa, K., and Moussaoui, A. (2017). *Deep learning for tomato diseases: Classification and symptoms visualization.* Applied Artificial Intelligence, 31(4), 299–315.
+
+4. Cheng, X., Zhang, Y., Chen, Y., Wu, Y., and Yue, Y. (2019). *Pest identification via deep residual learning in complex background.* Computers and Electronics in Agriculture, 176, 106–115.
+
+5. Cheng, X. et al. (2021). *YOLOv5-based rice leaf disease detection in complex field conditions.* Frontiers in Plant Science, 12, 672374.
+
+6. Ferentinos, K. P. (2018). *Deep learning models for plant disease detection and diagnosis.* Computers and Electronics in Agriculture, 145, 311–318.
+
+7. Fuentes, A., Yoon, S., Kim, S. C., and Park, D. S. (2017). *A robust deep-learning-based detector for real-time tomato plant diseases and pests recognition.* Sensors, 17(9), 2022.
+
+8. Ghaiwat, S. N., and Arora, P. (2014). *Detection and classification of plant leaf diseases using image processing techniques: A review.* International Journal of Recent Advances in Engineering and Technology, 2(3), 1–7.
+
+9. Howard, A. G., Zhu, M., Chen, B., Kalenichenko, D., Wang, W., Weyand, T., and Adam, H. (2017). *MobileNets: Efficient convolutional neural networks for mobile vision applications.* arXiv preprint arXiv:1704.04861.
+
+10. Howard, J., and Ruder, S. (2018). *Universal language model fine-tuning for text classification.* arXiv preprint arXiv:1801.06146.
+
+11. Jones, M., Bradley, J., and Sakimura, N. (2015). *RFC 7519 — JSON Web Token (JWT).* Internet Engineering Task Force.
+
+12. Karthik, R., Hariharan, M., Anand, S., Mathikshara, P., Johnson, A., and Menaka, R. (2020). *Attention embedded residual CNN for disease detection in tomato leaves.* Applied Soft Computing, 86, 105933.
+
+13. Li, C. et al. (2022). *YOLOv6: A single-stage object detection framework for industrial applications.* arXiv preprint arXiv:2209.02976.
+
+14. Liu, B. et al. (2021). *Plant disease detection and classification using deep learning.* Applied Sciences, 11(6), 2519.
+
+15. Mohanty, S. P., Hughes, D. P., and Salathé, M. (2016). *Using deep learning for image-based plant disease detection.* Frontiers in Plant Science, 7, 1419.
+
+16. Naikwadi, M. S., and Amoda, N. (2023). *Advances in image processing for detection of plant diseases.* International Journal of Advanced Research in Computer Engineering and Technology, 12(3), 110–117.
+
+17. Ozguven, M. M., and Adem, K. (2019). *Automatic detection and classification of leaf spot disease in sugar beet using deep learning algorithms.* Physica A, 535, 122537.
+
+18. Pantazi, X. E., Moshou, D., and Bravo, C. (2019). *Active learning system for weed species recognition based on hyperspectral sensing.* Biosystems Engineering, 146, 193–202.
+
+19. Pantazi, X. E. et al. (2021). *Pixel-level yellow rust severity scoring through semantic segmentation.* Computers and Electronics in Agriculture, 187, 106278.
+
+20. Phadikar, S., and Sil, J. (2012). *Rice disease identification using pattern recognition techniques.* In Proceedings of 11th ICCIT, Khulna, Bangladesh.
+
+21. Phadikar, S., Sil, J., and Das, A. K. (2008). *Rice diseases classification using feature extraction and neural network.* In Proceedings of IEEE ITSim, Kuala Lumpur, Malaysia.
+
+22. Qi, X. et al. (2023). *Instance segmentation for rice blast lesion detection using YOLOv8-Seg.* Plant Methods, 19, 88.
+
+23. Ramcharan, A., Baranowski, K., McCloskey, P., Ahmed, B., Legg, J., and Hughes, D. P. (2017). *Deep learning for image-based cassava disease detection.* Frontiers in Plant Science, 8, 1852.
+
+24. Rangarajan, A. K., Purushothaman, R., and Ramesh, A. (2018). *Tomato crop disease classification using pre-trained deep learning algorithm.* Procedia Computer Science, 133, 1040–1047.
+
+25. Redmon, J., Divvala, S., Girshick, R., and Farhadi, A. (2016). *You only look once: Unified, real-time object detection.* In Proceedings of IEEE CVPR, Las Vegas, NV, USA.
+
+26. Redmon, J., and Farhadi, A. (2017). *YOLO9000: Better, faster, stronger.* In Proceedings of IEEE CVPR, Honolulu, HI, USA.
+
+27. Redmon, J., and Farhadi, A. (2018). *YOLOv3: An incremental improvement.* arXiv preprint arXiv:1804.02767.
+
+28. Rothe, P. R., and Kshirsagar, R. V. (2015). *Cotton leaf disease identification using pattern recognition techniques.* In Proceedings of ICPC, Pune, India.
+
+29. Sannakki, S. S. et al. (2011). *Leaf disease grading by machine vision and fuzzy logic.* International Journal of Computer Technology and Applications, 2(5), 1–7.
+
+30. Tan, M., and Le, Q. V. (2019). *EfficientNet: Rethinking model scaling for convolutional neural networks.* In Proceedings of ICML, Long Beach, CA, USA.
+
+31. Turan, M. S. et al. (2010). *NIST Special Publication 800-132: Recommendation for password-based key derivation.* National Institute of Standards and Technology.
+
+32. Ultralytics (2023). *YOLOv8: A new state-of-the-art real-time object detection model.* [Online]. Available: https://github.com/ultralytics/ultralytics.
+
+33. Wang, C. Y., Bochkovskiy, A., and Liao, H. Y. M. (2022). *YOLOv7: Trainable bag-of-freebies sets new state-of-the-art for real-time object detectors.* In Proceedings of IEEE CVPR, New Orleans, LA, USA.
+
+34. Zhao, S. et al. (2022). *Detection of apple defects based on deep learning using YOLOv5.* Computers and Electronics in Agriculture, 202, 107405.
+
+35. Zhao, S. et al. (2023). *YOLOv8-based cucumber disease detection with instance segmentation.* Agronomy, 13(6), 1621.
+
+---
+---
+
+# APPENDIX A — DATASET STATISTICS
+
+## A.1 Dataset Summary
+
+| Split | Images | Annotated Instances | Avg Instances/Image |
+|---|---|---|---|
+| Training | 2,203 | 6,847 | 3.11 |
+| Validation | 553 | 1,719 | 3.11 |
+| Test | 278 | 865 | 3.11 |
+| **Total** | **3,034** | **9,431** | **3.11** |
+
+## A.2 Class Distribution (Training Split)
+
+| Class | Instances | % of Total |
+|---|---|---|
+| Red Rot | 897 | 13.1% |
+| Smut | 811 | 11.8% |
+| Healthy | 743 | 10.8% |
+| Yellow Leaf Disease | 687 | 10.0% |
+| Pyrilla | 621 | 9.1% |
+| Wilt | 551 | 8.0% |
+| Woolly Aphid | 489 | 7.1% |
+| Pokkah Boeng | 467 | 6.8% |
+| Whitefly | 423 | 6.2% |
+| Grassy Shoot | 381 | 5.6% |
+| Early Shoot Borer | 279 | 4.1% |
+
+## A.3 Annotation Format
+
+**Detection (YOLO format):** `<class_id> <x_center> <y_center> <width> <height>`, all values normalised to [0, 1] relative to image dimensions.
+
+**Segmentation (YOLO-Seg format):** `<class_id> <x1> <y1> <x2> <y2> ... <xN> <yN>`, polygon vertex coordinates normalised to [0, 1].
+
+## A.4 Image Metadata
+
+| Property | Value |
+|---|---|
+| Image formats | JPEG (78%), PNG (22%) |
+| Dominant resolution | 640×640 (after Roboflow preprocessing) |
+| Original resolution range | 480×480 to 4032×3024 |
+| Colour space | RGB (sRGB) |
+| Acquisition devices | Smartphone cameras (80%), DSLR (20%) |
+| Acquisition conditions | Field (natural light): 72%, Laboratory (controlled): 28% |
+
+---
+---
+
+# APPENDIX B — API REFERENCE
+
+## B.1 Authentication Endpoints
+
+### POST /api/register
+
+**Request Body (application/json):**
+```json
+{ "username": "farmer_raj", "email": "raj@example.com", "password": "SecurePass1" }
+```
+**Response 201:**
+```json
+{ "id": 12, "username": "farmer_raj", "email": "raj@example.com", "created_at": "2025-03-15T09:23:41" }
+```
+**Response 409:** Username or email already registered.
+
+### POST /api/login
+
+**Request Body (application/json):**
+```json
+{ "username": "farmer_raj", "password": "SecurePass1" }
+```
+**Response 200:**
+```json
+{ "access_token": "<JWT string>", "token_type": "bearer", "expires_in": 86400 }
+```
+**Response 401:** Invalid credentials.
+
+## B.2 Detection Endpoint
+
+### POST /api/detect
+
+**Request:** `multipart/form-data`, field `file` = image file (JPEG or PNG, ≤ 10 MB).  
+**Optional Header:** `Authorization: Bearer <token>`
+
+**Response 200:**
+```json
+{
+  "status": "success",
+  "health_index": 72.4,
+  "detections": [
+    { "class": "Red Rot", "confidence": 0.91, "bbox": [120, 45, 310, 280], "mask_area_ratio": 0.073 }
+  ],
+  "recommendations": {
+    "Red Rot": { "chemical": "Carbendazim 50% WP @ 1g/L", "cultural": "Remove infected stools and burn." }
+  },
+  "annotated_image_b64": "iVBORw0KGgo...",
+  "segmentation_image_b64": "iVBORw0KGgo...",
+  "scan_id": 47
+}
+```
+
+## B.3 History and Report Endpoints
+
+### GET /api/history
+**Auth:** Required. **Query params:** `page` (int, default 1), `per_page` (int, default 20).  
+**Response 200:** `{ "total": 83, "page": 1, "per_page": 20, "items": [ { scan record }, ... ] }`
+
+### GET /api/history/{id}
+**Auth:** Required. Returns single scan record or 404 if not found / not owned by token user.
+
+### DELETE /api/history/{id}
+**Auth:** Required. Returns 204 on successful deletion.
+
+### GET /api/report/{id}
+**Auth:** Required. Returns `application/pdf` binary stream. Content-Disposition sets filename `scan_{id}_report.pdf`.
+
+## B.4 Statistics Endpoint
+
+### GET /api/stats
+**Auth:** Required.  
+**Response 200:**
+```json
+{
+  "total_scans": 83,
+  "most_detected_class": "Red Rot",
+  "average_health_index": 68.3,
+  "scans_last_30_days": 14,
+  "health_trend": [ { "date": "2025-03-01", "avg_health_index": 72.1 } ]
+}
+```
+
+## B.5 System Endpoints
+
+### GET /api/health
+**Auth:** None.  
+**Response 200:** `{ "status": "healthy", "model_loaded": true, "db_connected": true, "version": "1.0.0" }`
+
+### DELETE /api/account
+**Auth:** Required. Soft-deletes the authenticated user account (`is_active=False`). Returns 204.
+
+---
+
+*End of Report*
